@@ -1,0 +1,85 @@
+{
+  "name": "snapcut-3d",
+  "version": "1.0.0",
+  "description": "3D打印大模型分件切片与磁吸/榫卯定位桌面客户端 (专治大件塞不进打印机)",
+  "main": "main.cjs",
+  "type": "module",
+  "scripts": {
+    "start": "electron .",
+    "web": "node server.js",
+    "build": "electron-builder",
+    "pack": "electron-builder --dir",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux"
+  },
+  "keywords": [
+    "3d-printing",
+    "slicer",
+    "mesh-cutting",
+    "bambu-lab",
+    "orcaslicer",
+    "magnets",
+    "dowels",
+    "electron"
+  ],
+  "author": "registerqd",
+  "license": "MIT",
+  "dependencies": {
+    "archiver": "^8.0.0",
+    "earcut": "^3.2.4",
+    "express": "^5.3.0",
+    "multer": "^2.5.0",
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.registerqd.snapcut3d",
+    "productName": "SnapCut 3D",
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "public/**/*",
+      "samples/**/*",
+      "server.js",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.graphics-design",
+      "icon": "assets/icon.png"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "tar.gz"
+      ],
+      "category": "Graphics",
+      "icon": "assets/icon.png"
+    }
+  }
+}

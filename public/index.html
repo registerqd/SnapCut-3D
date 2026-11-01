@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta name="AIGC" content='{"Label":"1","ContentProducer":"001191340000711771143J00000","ProduceID":"dfcadee4-60b5-4ec9-9ccf-a61de2803020-c7245071","ReservedCode1":"","ContentPropagator":"001191340000711771143J00000","PropagateID":"dfcadee4-60b5-4ec9-9ccf-a61de2803020-c7245071","ReservedCode2":""}'>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SnapCut 3D - 3D打印大模型分件切片与磁吸/榫卯定位器</title>
+  <link rel="stylesheet" href="./css/style.css">
+  <script src="./lib/earcut.min.js"></script>
+</head>
+<body>
+
+  <!-- 顶部状态栏 -->
+  <header class="header">
+    <div class="brand">
+      <div class="logo-badge">SNAPCUT 3D</div>
+      <div class="brand-title">
+        大模型分件切片与磁吸/榫卯定位器
+      </div>
+      <div class="brand-desc">
+        专治大件塞不进打印机 · 30秒生成无胶水磁吸/防呆榫卯分件
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="btn-header" id="btn-show-bom" style="color:var(--primary);border-color:var(--primary);">
+        📋 装配指南 & BOM 清单
+      </button>
+      <a href="https://makerworld.com" target="_blank" class="btn-header" style="text-decoration:none;">
+        🌐 创客生态
+      </a>
+    </div>
+  </header>
+
+  <!-- 主体工作区 -->
+  <main class="main-container">
+
+    <!-- 左侧 3D 视图 -->
+    <section class="viewport-area" id="viewport-container">
+
+      <!-- 顶部浮层: 打印机成型体积超限预警条 -->
+      <div class="viewport-overlay-top">
+        <div class="printer-alert-card" id="printer-alert-card">
+          <div class="alert-icon">⚠️</div>
+          <div>
+            <div class="alert-info-title" id="alert-title">
+              正在分析模型尺寸...
+            </div>
+            <div class="alert-info-dims" id="alert-reason">
+              正在计算与打印机成型体积比对...
+            </div>
+          </div>
+        </div>
+
+        <!-- 视图操作小工具条 -->
+        <div class="viewport-tools">
+          <button class="btn-tool active" title="透视视图">3D 视图</button>
+          <button class="btn-tool" id="btn-reset-view" title="居中聚焦">重置视角</button>
+        </div>
+      </div>
+
+      <!-- 底部状态条 -->
+      <div class="viewport-bottom-bar">
+        <div class="stat-item">当前模型: <strong id="current-model-name">光剑手柄 (290mm)</strong></div>
+        <div class="stat-item">尺寸: <strong id="model-dim-x">0 mm</strong> × <strong id="model-dim-y">0 mm</strong> × <strong id="model-dim-z">0 mm</strong></div>
+        <div class="stat-item" id="stat-cut-info">切面准备就绪</div>
+      </div>
+
+    </section>
+
+    <!-- 右侧参数与配置面板 -->
+    <aside class="sidebar">
+      <div class="sidebar-scroll">
+
+        <!-- 1. 打印机成型尺寸 -->
+        <div class="panel-card">
+          <div class="panel-card-title">
+            <span>目标 3D 打印机规格</span>
+            <span class="badge-step">第一步</span>
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <select class="form-select" id="printer-select"></select>
+          </div>
+        </div>
+
+        <!-- 2. 模型导入与示例 -->
+        <div class="panel-card">
+          <div class="panel-card-title">
+            <span>导入模型 / 极速体验</span>
+            <span class="badge-step">第二步</span>
+          </div>
+
+          <div class="dropzone" id="dropzone">
+            <div class="dropzone-icon">📥</div>
+            <div class="dropzone-text">点击或将 STL 拖拽至此处</div>
+            <div class="dropzone-sub">支持二进制 / ASCII 格式 (100MB以内)</div>
+            <input type="file" id="file-input" accept=".stl" style="display:none;">
+          </div>
+
+          <div style="font-size:12px;color:var(--text-muted);margin-top:12px;font-weight:600;">
+            典型大尺寸超限案例 (点击直达体验):
+          </div>
+          <div class="samples-grid" id="samples-list"></div>
+        </div>
+
+        <!-- 3. 切割平面设置 (切分前显示) -->
+        <div class="panel-card" id="slice-config-card">
+          <div class="panel-card-title">
+            <span>切刀与连接件设定</span>
+            <span class="badge-step">第三步</span>
+          </div>
+
+          <!-- 切割轴向 -->
+          <div class="form-group">
+            <label class="form-label">切割方向 (主切轴)</label>
+            <div class="capsule-group">
+              <button class="capsule-btn active axis-btn" data-axis="Y">水平横切 (Y)</button>
+              <button class="capsule-btn axis-btn" data-axis="Z">前后纵切 (Z)</button>
+              <button class="capsule-btn axis-btn" data-axis="X">左右切分 (X)</button>
+            </div>
+          </div>
+
+          <!-- 切割高度位置滑块 -->
+          <div class="form-group">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <label class="form-label" style="margin:0;">切刀位置 (高度偏移)</label>
+              <button class="btn-header" id="btn-center-cut" style="padding:2px 8px;font-size:11px;">📍 智能居中</button>
+            </div>
+            <div class="slider-container">
+              <input type="range" class="slider-input" id="slice-offset-slider" min="0" max="290" value="145" step="0.5">
+              <span class="slider-val" id="slice-offset-val">145.0 mm</span>
+            </div>
+          </div>
+
+          <!-- 连接件类型选择 -->
+          <div class="form-group">
+            <label class="form-label">切面连接方式 (核心流量密码)</label>
+            <div class="capsule-group">
+              <button class="capsule-btn active connector-type-btn" data-type="magnet">🧲 强磁吸附 (推荐)</button>
+              <button class="capsule-btn connector-type-btn" data-type="dowel">🪵 防呆榫卯</button>
+              <button class="capsule-btn connector-type-btn" data-type="none">✂️ 仅切分</button>
+            </div>
+          </div>
+
+          <!-- 磁铁参数配置 -->
+          <div id="magnet-options">
+            <div class="form-group">
+              <label class="form-label">磁铁规格 (市售标准件)</label>
+              <select class="form-select" id="magnet-select"></select>
+            </div>
+          </div>
+
+          <!-- 榫卯参数配置 -->
+          <div id="dowel-options" style="display:none;">
+            <div class="form-group">
+              <label class="form-label">榫卯公母形状与截面</label>
+              <select class="form-select" id="dowel-select"></select>
+            </div>
+          </div>
+
+          <!-- 布局与公差 -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">孔位排布模式</label>
+              <select class="form-select" id="placement-select">
+                <option value="dual" selected>双孔对称 (最稳)</option>
+                <option value="single">单孔居中</option>
+                <option value="quad">四孔矩阵</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">打印公差补偿</label>
+              <div style="display:flex;align-items:center;gap:4px;">
+                <input type="number" class="form-input" id="clearance-input" value="0.2" min="0" max="0.6" step="0.05">
+                <span style="font-size:12px;color:var(--text-muted);">mm</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. 切割后操作面板 (切分完成后展示) -->
+        <div class="panel-card" id="export-card" style="display:none;">
+          <div class="panel-card-title">
+            <span>切分与连接件成果交付</span>
+            <span class="badge-step" style="background:rgba(16,185,129,0.2);color:#34d399;">已完成</span>
+          </div>
+
+          <!-- 爆炸视图滑块 -->
+          <div class="form-group">
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+              <label class="form-label" style="margin:0;">爆炸分离视图 (检查孔位/榫卯)</label>
+              <button class="btn-header" id="btn-reset-assemble" style="padding:2px 8px;font-size:11px;">🔄 严丝合缝</button>
+            </div>
+            <div class="slider-container">
+              <input type="range" class="slider-input" id="explode-slider" min="0" max="80" value="25" step="1">
+            </div>
+          </div>
+
+          <!-- 排版与重切按钮 -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+            <button class="btn-secondary" id="btn-lay-flat">
+              🛏️ 一键平放热床
+            </button>
+            <button class="btn-secondary" id="btn-reset-slice">
+              ✏️ 重新调整切刀
+            </button>
+          </div>
+
+          <!-- 单独导出 STL -->
+          <div class="export-group" style="margin-bottom:12px;">
+            <button class="btn-secondary" id="btn-download-parta" style="border-color:#00e5a3;color:#00e5a3;">
+              💾 导出 A 件 STL
+            </button>
+            <button class="btn-secondary" id="btn-download-partb" style="border-color:#ff6b4a;color:#ff6b4a;">
+              💾 导出 B 件 STL
+            </button>
+          </div>
+
+          <!-- 一键打包 ZIP -->
+          <button class="btn-primary" id="btn-download-zip">
+            📦 一键打包全部零件与BOM (ZIP)
+          </button>
+        </div>
+
+      </div>
+
+      <!-- 底部常驻触发按钮 (切分前) -->
+      <div class="sidebar-footer">
+        <button class="btn-primary" id="btn-execute-slice">
+          ⚡ 立即切分并生成连接件
+        </button>
+      </div>
+    </aside>
+
+  </main>
+
+  <!-- 装配指南与 BOM 模态弹窗 -->
+  <div class="modal-mask" id="bom-modal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title">📖 创客装配说明书与采购清单 (BOM)</div>
+        <button class="modal-close" id="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body" id="bom-content">
+        <!-- 动态注入 -->
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./js/app.js"></script>
+<!--aigc-badge--><div data-aigc="notice" style="position:fixed;left:0;right:0;bottom:8px;z-index:2147483647;pointer-events:none;text-align:center;font:12px/1.5 'PingFang SC','Microsoft YaHei',sans-serif"><span style="display:inline-block;padding:3px 10px;border-radius:10px;background:rgba(255,255,255,.88);color:#555;border:1px solid rgba(0,0,0,.14)">内容由 AI生成，请仔细甄别</span></div>
+</body>
+</html>
