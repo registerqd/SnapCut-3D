@@ -39,7 +39,7 @@ class SnapCutApp {
 
     // 2. 加载 earcut
     if (window.earcut) {
-      this.earcut = window.earcut;
+      this.earcut = typeof window.earcut === 'function' ? window.earcut : (window.earcut.default || window.earcut);
     } else {
       // 备用简易三角剖分
       this.earcut = (coords, holes, dim) => {
