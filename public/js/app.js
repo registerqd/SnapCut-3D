@@ -261,6 +261,10 @@ class SnapCutApp {
     // 15. 下载 Part A / Part B STL (支持 Electron 原生保存对话框与 Web 降级)
     document.getElementById('btn-download-parta').addEventListener('click', async () => {
       if (!this.sliceResult) return;
+      if (!this.sliceResult.partA || this.sliceResult.partA.length === 0) {
+        alert('A 件为空，没有可导出的几何体。请把切面位置往里挪一点后重新切分。');
+        return;
+      }
       const buffer = STLUtils.exportBinarySTL(this.sliceResult.partA);
       const fileName = `${this.modelName}_PartA_切分件.stl`;
       if (window.electronAPI && window.electronAPI.saveSTL) {
@@ -272,6 +276,10 @@ class SnapCutApp {
     });
     document.getElementById('btn-download-partb').addEventListener('click', async () => {
       if (!this.sliceResult) return;
+      if (!this.sliceResult.partB || this.sliceResult.partB.length === 0) {
+        alert('B 件为空，没有可导出的几何体。请把切面位置往里挪一点后重新切分。');
+        return;
+      }
       const buffer = STLUtils.exportBinarySTL(this.sliceResult.partB);
       const fileName = `${this.modelName}_PartB_切分件.stl`;
       if (window.electronAPI && window.electronAPI.saveSTL) {
@@ -443,7 +451,10 @@ class SnapCutApp {
         document.getElementById('export-card').style.display = 'block';
 
         // 更新状态卡
-        document.getElementById('stat-cut-info').innerHTML = `切分完成! 耗时: <strong>${result.elapsedMs}ms</strong> | 三角面: <strong>${(result.partA.length + result.partB.length)/9}</strong> | 连接孔: <strong>${result.connectorCount} 处</strong>`;
+        const warnHtml = (result.warnings && result.warnings.length > 0)
+          ? `<div style="margin-top:6px;font-size:11px;color:#f39c12;">⚠️ ${result.warnings.join('；')}</div>`
+          : '';
+        document.getElementById('stat-cut-info').innerHTML = `切分完成! 耗时: <strong>${result.elapsedMs}ms</strong> | 三角面: <strong>${(result.partA.length + result.partB.length)/9}</strong> | 连接孔: <strong>${result.connectorCount} 处</strong>${warnHtml}`;
 
       } catch (err) {
         console.error('切片执行异常:', err);
