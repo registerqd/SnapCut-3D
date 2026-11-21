@@ -11,7 +11,6 @@ export class STLUtils {
     if (this.isBinary(buffer)) {
       return this.parseBinary(buffer);
     } else {
-      const reader = new FileReader();
       const text = new TextDecoder().decode(buffer);
       return this.parseASCII(text);
     }
@@ -20,6 +19,18 @@ export class STLUtils {
   static isBinary(buffer) {
     if (buffer.byteLength < 84) return false;
     const reader = new DataView(buffer);
+    // 头部以 "solid" 开头不代表一定是 ASCII（不少二进制 STL 也这么写头），
+    // 但以 "endsolid" 结尾的必然是 ASCII。先做这个廉价判定，
+    // 避免「ASCII 文件长度恰好落在二进制公式容差内」被误判成二进制解析出一堆垃圾几何。
+    const head = new Uint8Array(buffer, 0, Math.min(5, buffer.byteLength));
+    const isSolidHead = head[0] === 0x73 && head[1] === 0x6f && head[2] === 0x6c &&
+      head[3] === 0x69 && head[4] === 0x64;
+    if (isSolidHead) {
+      const tailLen = Math.min(64, buffer.byteLength);
+      const tail = new Uint8Array(buffer, buffer.byteLength - tailLen, tailLen);
+      const tailText = new TextDecoder().decode(tail);
+      if (tailText.includes('endsolid')) return false;
+    }
     const numFaces = reader.getUint32(80, true);
     const expectedSize = 84 + numFaces * 50;
     return Math.abs(expectedSize - buffer.byteLength) < 100;
@@ -108,7 +119,17 @@ export class STLUtils {
    * 将 positions (Float32Array) 打包为标准的二进制 STL 文件 ArrayBuffer
    */
   static exportBinarySTL(positions) {
-    const triangleCount = Math.floor(positions.length / 9);
+    // 切分结果里可能混进 NaN / Infinity 顶点（退化三角形、射线求交除零等），
+    // 旧实现原样写进 STL，切片软件会整份文件报「几何无效」直接拒收，
+    // 用户拿到的零件打不开还看不出原因。这里先剔除非法三角形。
+    let triangleCount = 0;
+    for (let i = 0; i + 8 < positions.length; i += 9) {
+      let ok = true;
+      for (let k = 0; k < 9; k++) {
+        if (!Number.isFinite(positions[i + k])) { ok = false; break; }
+      }
+      if (ok) triangleCount++;
+    }
     const bufferSize = 84 + triangleCount * 50;
     const buffer = new ArrayBuffer(bufferSize);
     const view = new DataView(buffer);
@@ -123,11 +144,12 @@ export class STLUtils {
     view.setUint32(80, triangleCount, true);
 
     let offset = 84;
-    for (let i = 0; i < triangleCount; i++) {
-      const pIdx = i * 9;
+    for (let i = 0; i + 8 < positions.length; i += 9) {
+      const pIdx = i;
       const v1x = positions[pIdx], v1y = positions[pIdx + 1], v1z = positions[pIdx + 2];
       const v2x = positions[pIdx + 3], v2y = positions[pIdx + 4], v2z = positions[pIdx + 5];
       const v3x = positions[pIdx + 6], v3y = positions[pIdx + 7], v3z = positions[pIdx + 8];
+      if (![v1x, v1y, v1z, v2x, v2y, v2z, v3x, v3y, v3z].every(Number.isFinite)) continue;
 
       // 计算三角面法向量
       const ax = v2x - v1x, ay = v2y - v1y, az = v2z - v1z;
@@ -173,13 +195,16 @@ export class STLUtils {
    * 将 ArrayBuffer 转为 Data URL (base64)
    */
   static bufferToBase64(buffer) {
-    let binary = '';
     const bytes = new Uint8Array(buffer);
-    const len = bytes.byteLength;
-    for (let i = 0; i < len; i++) {
-      binary += String.fromCharCode(bytes[i]);
+    // 旧实现逐字节 binary += String.fromCharCode(...)：每次拼接都重建整个字符串，
+    // 是 O(n²)，20MB 的零件要拼上千万次，浏览器直接卡死几十秒（页面「无响应」）。
+    // 改为按 32KB 分块批量转换，速度提升两个数量级。
+    const CHUNK = 0x8000;
+    const parts = [];
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      parts.push(String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK)));
     }
-    return 'data:application/octet-stream;base64,' + btoa(binary);
+    return 'data:application/octet-stream;base64,' + btoa(parts.join(''));
   }
 
   /**
